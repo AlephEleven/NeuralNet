@@ -74,7 +74,7 @@ class CoolLoss:
 
 ## Setup
 
-Download LinearNet.py and place in current directory. For Colab, drag into ```Fi;es```.
+Download LinearNet.py and place in current directory. For Colab, drag into ```Files```.
 
 ## Requirements
 
