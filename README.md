@@ -19,6 +19,7 @@ Linear Neural Network library for Python created with pure NumPy
 
 ## Examples
 - [Iris Dataset](../main/examples/Iris.ipynb)
+- [MNIST Dataset](../main/examples/MNIST.ipynb)
 
 ## Component Template
 
