@@ -11,7 +11,7 @@ Linear Neural Network library for Python created with pure NumPy
 
 
 ## Features
-- Lightweight library for general-purpose usage
+- Lightweight library for general-purpose machine learning
 - Easy-to-use sequential modelling, with 4+ components to choose from
 - Components for holding backpropagation derivatives and/or weights+bias
 - Simple implementation for easy development
