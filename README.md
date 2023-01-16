@@ -4,6 +4,7 @@ Linear Neural Network library for Python created with pure NumPy
 
 ## Table of Contents
 * [Features](#features)
+* [Updates](#updates)
 * [Examples](#examples)
 * [Component Template](#component-template)
 * [Setup](#setup)
@@ -11,11 +12,18 @@ Linear Neural Network library for Python created with pure NumPy
 
 
 ## Features
-- Lightweight library for general-purpose machine learning
-- Easy-to-use sequential modelling, with 4+ components to choose from
-- Components for holding backpropagation derivatives and/or weights+bias
-- Simple implementation for easy development
-- Includes One-hot encoding, MLE, CELoss and train function
+- Lightweight library for general-purpose machine learning.
+- Easy-to-use sequential modelling, with 4+ components to choose from.
+- Components for holding backpropagation derivatives and/or weights+bias.
+- Simple implementation for easy development.
+- Includes One-hot encoding, Loss functions and training loop.
+
+## Updates
+- DataLoader, changed how training data is loaded into model
+- Customize batch sizes and enable shuffling setting for data loading, rather than single label/feature pair.
+- Added Stochastic Gradient Descent, also abstracted learning rate term for customizable descent algorithms.
+- ```timed``` parameter for training loop to check current time at each epoch stamp.
+- Up-to-date examples for Iris & MNIST.
 
 ## Examples
 - [Iris Dataset](../main/examples/Iris.ipynb)
@@ -23,7 +31,7 @@ Linear Neural Network library for Python created with pure NumPy
 
 ## Component Template
 
-Standard templates for creating new components
+Standard templates for creating new components.
 
 ### Activation function
 
@@ -68,7 +76,7 @@ class CoolLoss:
     #LOSS DERIVATIVE CODE
     cool_dx = ...
 
-    return cool, cool_Dx
+    return cool, cool_dx
 ```
 
 
@@ -78,8 +86,10 @@ Download LinearNet.py and place in current directory. For Colab, drag into ```Fi
 
 ## Requirements
 
-Latest version of ```numpy``` and ```dataclasses```
-
+### Packages:
+- ```numpy```
+- ```dataclasses```
+- ```datetime```
 
 
 
