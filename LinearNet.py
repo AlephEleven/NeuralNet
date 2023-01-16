@@ -1,6 +1,10 @@
 import numpy as np
 from dataclasses import dataclass, field
+import datetime
 
+'''
+Layer Component
+'''
 
 @dataclass
 class Linear:
@@ -39,6 +43,10 @@ class Linear:
       self.active_dx = self.weights.T
 
     return self.weights @ X + self.bias
+
+'''
+Activation Functions
+'''
 
 @dataclass
 class Sigmoid:
@@ -100,7 +108,7 @@ class ReLU:
     if update: 
       self.active_dx = reluX.copy()
       self.active_dx[self.active_dx <= 0] = 0
-      self.active_dx[self.active_dx != 0] = 1
+      self.active_dx[self.active_dx > 0] = 1
 
     return reluX
 
@@ -117,12 +125,16 @@ class SoftMax:
     Derivatives are:
     dh/dz = s_i(1-sj)
     '''
-    softX = np.exp(X)/np.sum(np.exp(X))
+    softX = np.exp(X)/np.sum(np.exp(X), axis=0)
 
     if update: self.active_dx = softX*(1-softX)
 
     return softX
 
+
+'''
+Loss Functions
+'''
 
 @dataclass
 class CrossEntropyLoss:
@@ -152,17 +164,29 @@ class MeanSquaredLoss:
 
     return mse, mse_dx
 
+'''
+Gradient Descent
+'''
+
 @dataclass
-class OneHotEncoding:
-  def __call__(self, target):
-    '''
-    Applies one-hot encoding on categorical data
-    '''
-    encoding = np.zeros((target.size, np.max(target)+1))
-    encoding[np.arange(target.size), target] = 1
-    return encoding
+class StochasticGradientDescent:
+  lr: float = 0.001
 
+  def __call__(self, learnable_block, chain_stack):
+    '''
+    Uses SGD to update the weights/bias of a given block
+    
+    Algorithm is:
+    w(t+1) = w(t) - lr*dL(w)
+    '''
+    learnable_block.weights -= self.lr*(chain_stack @ learnable_block.weights_dx)
 
+    chain_stack_avg = np.mean(chain_stack, axis=1)[np.newaxis].T
+    learnable_block.bias -= self.lr*(chain_stack_avg)
+
+'''
+Neural Net Framework
+'''
 
 class NeuralNet:
   def __init__(self) -> None:
@@ -181,42 +205,95 @@ class NeuralNet:
 
     return X
 
-  def backprop(self, loss_dx, lr) -> None:
+  def backprop(self, loss_dx, grad_descent) -> None:
     chain_stack = loss_dx
     for indx, block in enumerate(reversed(self.sequence_)):
 
       if block.is_mat:
-        block.weights = block.weights - lr*(chain_stack @ block.weights_dx)
-        block.bias = block.bias - lr*(chain_stack) #@ block.bias_dx) NOTE: linear derivative for bias is 1, other network structures may be different
+        grad_descent(block, chain_stack)
 
         chain_stack = block.active_dx@chain_stack
       else:
         chain_stack = block.active_dx*chain_stack
 
   
-  def train(self, X_train, y_train, lossfn, epochs=10, lr=0.001) -> dict:
+  def train(self, training_data, lossfn, grad_descent, epochs=10, timed=True) -> dict:
     losses, accs = [], []
     for epoch in range(1, epochs+1):
       loss_train = 0
       acc = 0
-      for data, labels in zip(X_train, y_train):
-        outputs = self.forward(np.array([data]).T)
-        loss, loss_dx = lossfn(np.array([labels]).T, outputs)
-        
-        self.backprop(loss_dx, lr)
+      training_data.reshuffle()
 
-        acc += np.argmax(outputs) == np.argmax(labels)
+      for data, labels in training_data:
+        outputs = self.forward(data)
+        loss, loss_dx = lossfn(labels, outputs)
+        
+        self.backprop(loss_dx, grad_descent)
+
+        acc += np.sum(outputs.argmax(axis=0) == labels.argmax(axis=0))
 
         loss_train += loss
       
       if epoch%(epochs//10)==0:
-        acc = np.round(acc/len(X_train), 3)
+        acc = np.round(acc/training_data.maxsize, 3)
         loss_train = np.round(loss_train, 3)
-        print(f"Epoch #{epoch}\tLoss: {loss_train}\tAcc: {acc}")
+        current_time = datetime.datetime.now() if timed else ""
+        print(f"Epoch #{epoch}\tLoss: {loss_train}\tAcc: {acc}\t {current_time}")
         accs += [acc]
       losses += [loss_train]
       
     return {"loss_hist": losses, "acc_hist": accs}
-  
+
   def __call__(self, X) -> np.ndarray:
-    return self.forward(np.array([X]).T)
+    return self.forward(X[np.newaxis].T, update_params=False)
+
+'''
+Utility Code
+'''
+
+@dataclass
+class OneHotEncoding:
+  def __call__(self, target) -> np.ndarray:
+    '''
+    Applies one-hot encoding on categorical data
+    '''
+    encoding = np.zeros((target.size, np.max(target)+1))
+    encoding[np.arange(target.size), target] = 1
+    return encoding
+
+class DataLoader:
+  '''
+  Creates a generator from a set of features/labels and splits & shuffles data into batches
+
+  params
+  - batch_size: size of each batch
+  - shuffle: check whether to shuffle data before loading
+  '''
+  def __init__(self, X: np.ndarray, y: np.ndarray, batch_size: int = 16, shuffle: bool = True) -> None:
+    self.X = X
+    self.y = y
+
+    self.maxsize = len(X)
+    self.batch_size = batch_size
+    self.shuffle = shuffle
+    
+    self.batch_count = self.maxsize//self.batch_size if self.maxsize%self.batch_size==0 else self.maxsize//self.batch_size+1
+    
+    self.indices = np.arange(self.maxsize)
+
+    self.reshuffle()
+
+  def reshuffle(self):
+    if self.shuffle: np.random.shuffle(self.indices)
+
+    X_rand = self.X[self.indices]
+    y_rand = self.y[self.indices]
+
+    self.data = ([X_rand[i*self.batch_size:(i+1)*self.batch_size if (i+1)*self.batch_size < self.maxsize else self.maxsize].T,
+                 y_rand[i*self.batch_size:(i+1)*self.batch_size if (i+1)*self.batch_size < self.maxsize else self.maxsize].T] for i in range(self.batch_count))
+
+  def __iter__(self):
+    return self.data
+
+  def __next__(self) -> tuple:
+    return next(self.data)
