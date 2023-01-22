@@ -170,19 +170,125 @@ Gradient Descent
 
 @dataclass
 class StochasticGradientDescent:
-  lr: float = 0.001
+  lr: float = 0.01
 
-  def __call__(self, learnable_block, chain_stack):
+  def __call__(self, learnable_block, chain_stack, *args):
     '''
     Uses SGD to update the weights/bias of a given block
     
     Algorithm is:
     w(t+1) = w(t) - lr*dL(w)
     '''
-    learnable_block.weights -= self.lr*(chain_stack @ learnable_block.weights_dx)
+    dw = chain_stack @ learnable_block.weights_dx
+    learnable_block.weights -= self.lr*dw
 
-    chain_stack_avg = np.mean(chain_stack, axis=1)[np.newaxis].T
-    learnable_block.bias -= self.lr*(chain_stack_avg)
+    db = np.mean(chain_stack, axis=1)[np.newaxis].T
+    learnable_block.bias -= self.lr*db
+
+@dataclass
+class SGDMomentum:
+  lr: float = 0.001
+  momentum: float = 0.9
+
+  def __call__(self, learnable_block, chain_stack, *args):
+    '''
+    Uses Momentum+SGD to update the weights/bias of a given block
+    
+    Algorithm is:
+    step(t+1) = mu*step(t) + dL(w)
+    w(t+1) = w(t) - lr*b(t+1)
+    '''
+    if 'step_weights' not in dir(learnable_block):
+      learnable_block.step_weights = np.zeros_like(learnable_block.weights)
+
+    dw = chain_stack @ learnable_block.weights_dx
+    learnable_block.step_weights = self.momentum*learnable_block.step_weights + dw
+    learnable_block.weights -= self.lr*learnable_block.step_weights
+    
+    if 'step_bias' not in dir(learnable_block):
+      learnable_block.step_bias = np.zeros_like(learnable_block.bias)
+
+    db = np.mean(chain_stack, axis=1)[np.newaxis].T
+    learnable_block.step_bias = self.momentum*learnable_block.step_bias + db
+    learnable_block.bias -= self.lr*learnable_block.step_bias
+
+@dataclass
+class RMSProp:
+  alpha: float = 0.99
+  lr: float = 0.01
+  eps: float = 1e-8
+
+  def __call__(self, learnable_block, chain_stack, *args):
+    '''
+    Uses RMSProp to update the weights/bias of a given block
+    
+    Algorithm is:
+    vel(t+1) = alpha * vel(t) + (1-alpha)*dL(w)^2
+    w(t+1) = w(t) - lr*dw/(sqrt( vel(t+1)+eps ))
+    '''
+    if 'velocity_weights' not in dir(learnable_block):
+      learnable_block.velocity_weights = np.zeros_like(learnable_block.weights)
+
+    dw = chain_stack @ learnable_block.weights_dx
+    learnable_block.velocity_weights = self.alpha * learnable_block.velocity_weights + (1 - self.alpha) * dw**2
+    learnable_block.weights -= self.lr * dw/(np.sqrt(learnable_block.velocity_weights) + self.eps)
+    
+
+    if 'velocity_bias' not in dir(learnable_block):
+      learnable_block.velocity_bias = np.zeros_like(learnable_block.bias)
+
+    db = np.mean(chain_stack, axis=1)[np.newaxis].T
+    learnable_block.velocity_bias = self.alpha * learnable_block.velocity_bias + (1 - self.alpha) * db**2
+    learnable_block.weights -= self.lr * db/(np.sqrt(learnable_block.velocity_bias) + self.eps)
+
+@dataclass
+class AdamOptimizer:
+  lr: float = 0.001
+  beta1: float = 0.9
+  beta2: float = 0.999
+  eps: float = 1e-8
+
+  def __call__(self, learnable_block, chain_stack, epoch):
+    '''
+    Uses Adam Optimizer to update the weights/bias of a given block
+    
+    Algorithm is:
+    momentum(t+1) = beta1 * momentum(t) + (1-beta1) * dL(w)
+    velocity(t+1) = beta2 * velocity(t) + (1-beta2) * dL(w)^2
+
+    momentum_corrected = momentum(t+1)/(1 - beta1^(current epoch))
+    velocity_corrected = velocity(t+1)/(1 - beta2^(current epoch))
+
+    w(t+1) = w(t) - lr*momentum_corrected/(sqrt( velocity_corrected+eps ))
+    '''
+
+    if 'momentum_weights' not in dir(learnable_block):
+      learnable_block.momentum_weights = np.zeros_like(learnable_block.weights)
+
+    if 'velocity_weights' not in dir(learnable_block):
+      learnable_block.velocity_weights = np.zeros_like(learnable_block.weights)
+
+    dw = chain_stack @ learnable_block.weights_dx
+    learnable_block.momentum_weights = self.beta1 * learnable_block.momentum_weights + (1 - self.beta1) * dw
+    learnable_block.velocity_weights = self.beta2 * learnable_block.velocity_weights + (1 - self.beta2) * dw**2
+
+    momentum_weights_corrected = learnable_block.momentum_weights/(1 - self.beta1**(epoch+1))
+    velocity_weights_corrected = learnable_block.velocity_weights/(1 - self.beta1**(epoch+1))
+    learnable_block.weights -= self.lr * momentum_weights_corrected/(np.sqrt(velocity_weights_corrected) + self.eps)
+
+    if 'momentum_bias' not in dir(learnable_block):
+      learnable_block.momentum_bias = np.zeros_like(learnable_block.bias)
+
+    if 'velocity_bias' not in dir(learnable_block):
+      learnable_block.velocity_bias = np.zeros_like(learnable_block.bias)
+
+    db = np.mean(chain_stack, axis=1)[np.newaxis].T
+    learnable_block.momentum_bias = self.beta1 * learnable_block.momentum_bias + (1 - self.beta1) * db
+    learnable_block.velocity_bias = self.beta2 * learnable_block.velocity_bias + (1 - self.beta2) * db**2
+
+    momentum_bias_corrected = learnable_block.momentum_bias/(1 - self.beta1**(epoch+1))
+    velocity_bias_corrected = learnable_block.velocity_bias/(1 - self.beta1**(epoch+1))
+    learnable_block.bias -= self.lr * momentum_bias_corrected/(np.sqrt(velocity_bias_corrected) + self.eps)
 
 '''
 Neural Net Framework
@@ -205,19 +311,19 @@ class NeuralNet:
 
     return X
 
-  def backprop(self, loss_dx, grad_descent) -> None:
+  def backprop(self, loss_dx, grad_descent, epoch) -> None:
     chain_stack = loss_dx
     for indx, block in enumerate(reversed(self.sequence_)):
 
       if block.is_mat:
-        grad_descent(block, chain_stack)
+        grad_descent(block, chain_stack, epoch)
 
         chain_stack = block.active_dx@chain_stack
       else:
         chain_stack = block.active_dx*chain_stack
 
   
-  def train(self, training_data, lossfn, grad_descent, epochs=10, timed=True) -> dict:
+  def train(self, training_data, lossfn, grad_descent, epochs=10, display=True, timed=True) -> dict:
     losses, accs = [], []
     for epoch in range(1, epochs+1):
       loss_train = 0
@@ -228,7 +334,7 @@ class NeuralNet:
         outputs = self.forward(data)
         loss, loss_dx = lossfn(labels, outputs)
         
-        self.backprop(loss_dx, grad_descent)
+        self.backprop(loss_dx, grad_descent, epoch)
 
         acc += np.sum(outputs.argmax(axis=0) == labels.argmax(axis=0))
 
@@ -238,12 +344,12 @@ class NeuralNet:
         acc = np.round(acc/training_data.maxsize, 3)
         loss_train = np.round(loss_train, 3)
         current_time = datetime.datetime.now() if timed else ""
-        print(f"Epoch #{epoch}\tLoss: {loss_train}\tAcc: {acc}\t {current_time}")
+        if display: print(f"Epoch #{epoch}\tLoss: {loss_train}\tAcc: {acc}\t {current_time}")
         accs += [acc]
       losses += [loss_train]
       
     return {"loss_hist": losses, "acc_hist": accs}
-
+  
   def __call__(self, X) -> np.ndarray:
     return self.forward(X[np.newaxis].T, update_params=False)
 
