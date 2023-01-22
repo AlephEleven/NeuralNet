@@ -1,6 +1,6 @@
 # Changelog
 
-## [v2] - 2022-21-16
+## [v2] - 2022-01-21
 
 - Added 3 more descent algorithms: SGD+Momentum, RMSProp, AdamOptimizer
 - ```display``` parameter to toggle display output during training loop
