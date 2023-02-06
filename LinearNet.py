@@ -365,7 +365,7 @@ class OneHotEncoding:
     '''
     encoding = np.zeros((target.size, np.max(target)+1))
     encoding[np.arange(target.size), target] = 1
-    return encoding
+    return encoding 
 
 class DataLoader:
   '''
